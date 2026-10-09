@@ -1,140 +1,183 @@
-const uploadForm = document.querySelector('#upload-form');
-const videoInput = document.querySelector('#video-file');
-const fileName = document.querySelector('#file-name');
-const uploadButton = document.querySelector('#upload-button');
-const processButton = document.querySelector('#process-button');
-const message = document.querySelector('#app-message');
-const simulateButton = document.querySelector('#simulate-button');
-const endButton = document.querySelector('#end-button');
-let uploadedName = null;
+const input = document.getElementById("trafficVideo");
+const preview = document.getElementById("videoPreview");
+const uploadStatus = document.getElementById("uploadStatus");
+const processingStatus = document.getElementById("processingStatus");
+const processingError = document.getElementById("processingError");
+const uploadButton = document.getElementById("uploadButton");
+const processButton = document.getElementById("processButton");
+const progress = document.getElementById("processingProgress");
+const annotatedSection = document.getElementById("annotatedSection");
+let currentVideoUrl = null;
+let uploadedFilename = null;
 
-function setMessage(text, kind = '') {
-  message.textContent = text;
-  message.className = `message ${kind}`.trim();
+function clearAnalysis() {
+    document.getElementById("analysisDetails").hidden = true;
+    annotatedSection.hidden = true;
+    document.getElementById("classCounts").replaceChildren();
+    document.getElementById("vehicleCount").textContent = "--";
+    document.getElementById("density").textContent = "Not analysed";
 }
 
-async function readResponse(response) {
-  const payload = await response.json();
-  if (!response.ok || !payload.success) throw new Error(payload.error || 'Request failed.');
-  return payload;
+input.addEventListener("change", () => {
+    const file = input.files[0];
+    uploadedFilename = null;
+    processButton.disabled = true;
+    processingError.textContent = "";
+    clearAnalysis();
+    if (!file) {
+        uploadStatus.textContent = "No video selected.";
+        return;
+    }
+
+    const extension = file.name.split(".").pop().toLowerCase();
+    if (!["mp4", "avi"].includes(extension)) {
+        uploadStatus.textContent = "Choose an MP4 or AVI video.";
+        input.value = "";
+        return;
+    }
+    if (file.size > 100 * 1024 * 1024) {
+        uploadStatus.textContent = "The selected video exceeds the 100 MB limit.";
+        input.value = "";
+        return;
+    }
+
+    if (currentVideoUrl) URL.revokeObjectURL(currentVideoUrl);
+    currentVideoUrl = URL.createObjectURL(file);
+    preview.src = currentVideoUrl;
+    preview.style.display = "block";
+    uploadStatus.textContent = `Selected: ${file.name}`;
+    processingStatus.textContent = "Ready to upload.";
+});
+
+async function readJson(response) {
+    const result = await response.json();
+    if (!response.ok || !result.success) {
+        throw new Error(result.error || `Request failed (${response.status}).`);
+    }
+    return result;
 }
 
-videoInput.addEventListener('change', () => {
-  const file = videoInput.files[0];
-  uploadedName = null;
-  processButton.disabled = true;
-  if (!file) {
-    fileName.textContent = 'Choose a video to upload';
-    return;
-  }
-  fileName.textContent = file.name;
-  const extension = file.name.split('.').pop().toLowerCase();
-  if (!['mp4', 'avi'].includes(extension)) {
-    setMessage('Choose an MP4 or AVI video.', 'error');
-    videoInput.value = '';
-    fileName.textContent = 'Choose a video to upload';
-    return;
-  }
-  if (file.size > 100 * 1024 * 1024) {
-    setMessage('This video exceeds the 100 MB limit.', 'error');
-    videoInput.value = '';
-    fileName.textContent = 'Choose a video to upload';
-    return;
-  }
-  setMessage('Ready to upload.');
+uploadButton.addEventListener("click", async () => {
+    const file = input.files[0];
+    if (!file) {
+        uploadStatus.textContent = "Select an MP4 or AVI video first.";
+        return;
+    }
+
+    uploadButton.disabled = true;
+    uploadStatus.textContent = "Uploading video...";
+    processingError.textContent = "";
+    try {
+        const body = new FormData();
+        body.append("video", file);
+        const result = await readJson(await fetch("/api/upload", { method: "POST", body }));
+        uploadedFilename = result.filename;
+        processButton.disabled = false;
+        uploadStatus.textContent = result.message;
+        processingStatus.textContent = "Upload complete. Ready for inference.";
+    } catch (error) {
+        uploadStatus.textContent = "Upload failed.";
+        processingError.textContent = error.message;
+    } finally {
+        uploadButton.disabled = false;
+    }
 });
 
-uploadForm.addEventListener('submit', async (event) => {
-  event.preventDefault();
-  const file = videoInput.files[0];
-  if (!file) return setMessage('Choose a video before uploading.', 'error');
-  uploadButton.disabled = true;
-  setMessage('Uploading video...');
-  try {
-    const body = new FormData();
-    body.append('video', file);
-    const response = await fetch('/api/upload', { method: 'POST', body });
-    const result = await readResponse(response);
-    uploadedName = result.filename;
-    processButton.disabled = false;
-    setMessage(result.message, 'success');
-  } catch (error) {
-    setMessage(error.message, 'error');
-  } finally {
-    uploadButton.disabled = false;
-  }
+processButton.addEventListener("click", async () => {
+    if (!uploadedFilename) {
+        processingError.textContent = "Upload a video before starting inference.";
+        return;
+    }
+
+    processButton.disabled = true;
+    uploadButton.disabled = true;
+    progress.hidden = false;
+    progress.removeAttribute("value");
+    processingError.textContent = "";
+    processingStatus.textContent = "Processing every video frame with YOLO. This may take a while.";
+    try {
+        const result = await readJson(await fetch("/api/process", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ filename: uploadedFilename }),
+        }));
+        document.getElementById("vehicleCount").textContent = result.vehicle_detections;
+        document.getElementById("density").textContent = result.density;
+        document.getElementById("totalDetections").textContent = result.vehicle_detections;
+        document.getElementById("averageVehicles").textContent = result.average_vehicle_count;
+        document.getElementById("peakVehicles").textContent = result.peak_vehicle_count;
+        document.getElementById("framesProcessed").textContent = result.frames_processed;
+
+        const classCounts = document.getElementById("classCounts");
+        classCounts.replaceChildren();
+        for (const [vehicleClass, count] of Object.entries(result.counts)) {
+            const item = document.createElement("li");
+            item.textContent = `${vehicleClass}: ${count} detections`;
+            classCounts.append(item);
+        }
+        if (classCounts.childElementCount === 0) {
+            const item = document.createElement("li");
+            item.textContent = "No supported vehicle classes detected.";
+            classCounts.append(item);
+        }
+
+        document.getElementById("analysisDetails").hidden = false;
+        const annotatedVideo = document.getElementById("annotatedVideo");
+        annotatedVideo.src = result.annotated_video_url;
+        annotatedVideo.load();
+        annotatedSection.hidden = false;
+        document.getElementById("processingProgress").value = 1;
+        processingStatus.textContent = `${result.message} ${result.frames_processed} frames processed.`;
+    } catch (error) {
+        processingStatus.textContent = "Processing failed. No detection results were reported.";
+        processingError.textContent = error.message;
+    } finally {
+        processButton.disabled = !uploadedFilename;
+        uploadButton.disabled = false;
+    }
 });
 
-processButton.addEventListener('click', async () => {
-  if (!uploadedName) return setMessage('Upload a video before processing.', 'error');
-  processButton.disabled = true;
-  setMessage('Running actual vehicle inference on sampled frames...');
-  document.querySelector('#inference-status').textContent = 'Inference running';
-  try {
-    const response = await fetch(`/api/process/${encodeURIComponent(uploadedName)}`, { method: 'POST' });
-    const result = await readResponse(response);
-    document.querySelector('#vehicle-count').textContent = result.vehicle_count;
-    document.querySelector('#sample-count').textContent = `${result.sampled_frames} frames · peak ${result.peak_vehicle_count}`;
-    document.querySelector('#density-value').textContent = result.density;
-    document.querySelector('#signal-time').textContent = `${result.signal.green_seconds}s`;
-    document.querySelector('#signal-label').textContent = `Green time · ${result.signal.label}`;
-    document.querySelector('#green-light').classList.add('active');
-    document.querySelector('#model-label').textContent = 'Sampled-frame inference';
-    const rows = result.detections.map((item) => `<div class="detection-row"><span>${escapeHtml(item.class)}</span><strong>${item.count}</strong></div>`);
-    document.querySelector('#detection-list').innerHTML = rows.length ? rows.join('') : '<p class="empty-state">Inference completed: no supported vehicle classes detected in the sampled frames.</p>';
-    document.querySelector('#inference-status').textContent = 'Inference complete';
-    setMessage(`${result.message} ${result.ambulance_detection}`, 'success');
-  } catch (error) {
-    document.querySelector('#inference-status').textContent = 'Unavailable';
-    setMessage(error.message, 'error');
-  } finally {
-    processButton.disabled = false;
-  }
-});
+const emergencyStatus = document.getElementById("emergencyStatus");
+const startEmergency = document.getElementById("startEmergency");
+const endEmergency = document.getElementById("endEmergency");
 
-function escapeHtml(value) {
-  return String(value).replace(/[&<>"']/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[character]);
+function showCorridorState(state) {
+    emergencyStatus.textContent = state.active
+        ? `SIMULATED: ${state.direction.toUpperCase()} priority`
+        : "Normal traffic";
+    startEmergency.disabled = state.active;
+    endEmergency.disabled = !state.active;
 }
 
 async function refreshCorridor() {
-  try {
-    const response = await fetch('/api/corridor');
-    const state = await response.json();
-    renderCorridor(state);
-  } catch {
-    document.querySelector('#corridor-message').textContent = 'Corridor status is unavailable.';
-  }
+    try {
+        const response = await fetch("/api/corridor");
+        showCorridorState(await response.json());
+    } catch {
+        emergencyStatus.textContent = "Status unavailable";
+    }
 }
 
-function renderCorridor(state) {
-  const active = Boolean(state.active);
-  document.querySelector('#corridor-badge').textContent = active ? 'SIMULATED' : 'NORMAL';
-  document.querySelector('#corridor-badge').classList.toggle('active', active);
-  document.querySelector('#corridor-message').textContent = state.message;
-  document.querySelector('#route-line').className = `route-line ${active ? state.direction : ''}`;
-  simulateButton.disabled = active;
-  endButton.disabled = !active;
-}
-
-simulateButton.addEventListener('click', async () => {
-  try {
-    const response = await fetch('/api/corridor/simulate', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ direction: document.querySelector('#direction-select').value }),
-    });
-    renderCorridor(await readResponse(response));
-  } catch (error) {
-    setMessage(error.message, 'error');
-  }
+startEmergency.addEventListener("click", async () => {
+    try {
+        const response = await fetch("/api/corridor/simulate", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ direction: document.getElementById("emergencyDirection").value }),
+        });
+        showCorridorState(await readJson(response));
+    } catch (error) {
+        emergencyStatus.textContent = error.message;
+    }
 });
 
-endButton.addEventListener('click', async () => {
-  try {
-    const response = await fetch('/api/corridor/end', { method: 'POST' });
-    renderCorridor(await readResponse(response));
-  } catch (error) {
-    setMessage(error.message, 'error');
-  }
+endEmergency.addEventListener("click", async () => {
+    try {
+        const response = await fetch("/api/corridor/end", { method: "POST" });
+        showCorridorState(await readJson(response));
+    } catch (error) {
+        emergencyStatus.textContent = error.message;
+    }
 });
 
 refreshCorridor();

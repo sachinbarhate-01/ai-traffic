@@ -1,95 +1,85 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#101a2a">
-  <title>AI Traffic Control | Prototype</title>
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
-  <script src="{{ url_for('static', filename='js/script.js') }}" defer></script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Traffic Management</title>
+    <link rel="stylesheet"
+          href="{{ url_for('static', filename='css/style.css') }}">
+    <script src="{{ url_for('static', filename='js/script.js') }}" defer></script>
 </head>
 <body>
-  <header class="topbar">
-    <a class="brand" href="/" aria-label="AI Traffic Control home">
-      <span class="brand-mark" aria-hidden="true">AT</span>
-      <span>AI Traffic Control <span class="brand-subtitle">FIELD PROTOTYPE</span></span>
-    </a>
-    <span class="simulation-tag"><span class="pulse-dot"></span> SOFTWARE SIMULATION</span>
-  </header>
+    <header>
+        <h1>AI Traffic Management</h1>
+        <p>Adaptive Signals & Emergency Green Corridor</p>
+    </header>
 
-  <main class="dashboard">
-    <section class="intro" aria-labelledby="page-title">
-      <div>
-        <p class="eyebrow">TRAFFIC OPERATIONS / DEMO ENVIRONMENT</p>
-        <h1 id="page-title">Intersection overview</h1>
-      </div>
-      <p class="intro-note">No real signals are connected. All timings and emergency priority shown here are simulations.</p>
-    </section>
+    <main>
+        <section class="panel">
+            <h2>Traffic Monitoring</h2>
+            <p>Vehicle detection and traffic analysis dashboard</p>
 
-    <section class="workspace" aria-label="Traffic analysis dashboard">
-      <div class="main-column">
-        <section class="panel upload-panel" aria-labelledby="video-heading">
-          <div class="panel-heading">
-            <div><p class="eyebrow">01 / VIDEO INPUT</p><h2 id="video-heading">Analyze a traffic clip</h2></div>
-            <span class="quiet-label">MP4 / AVI · 100 MB max</span>
-          </div>
-          <form id="upload-form">
-            <label class="drop-zone" for="video-file">
-              <span class="upload-icon" aria-hidden="true">↑</span>
-              <span class="drop-copy"><strong id="file-name">Choose a video to upload</strong><span>Phone videos and desktop files are supported</span></span>
-              <span class="browse-button">Browse files</span>
-            </label>
-            <input id="video-file" name="video" type="file" accept="video/mp4,video/x-msvideo,.mp4,.avi" required>
-            <div class="form-actions">
-              <button class="button button-primary" id="upload-button" type="submit">Upload video</button>
-              <button class="button button-secondary" id="process-button" type="button" disabled>Run vehicle inference</button>
+            <label for="trafficVideo">Upload traffic video (MP4 or AVI, max 100 MB)</label>
+            <input type="file" id="trafficVideo" accept="video/mp4,video/x-msvideo,.mp4,.avi">
+            <button type="button" id="uploadButton">Upload video</button>
+            <button type="button" id="processButton" disabled>Process every frame</button>
+            <video id="videoPreview" controls playsinline></video>
+            <p id="uploadStatus" role="status" aria-live="polite">No video selected.</p>
+            <progress id="processingProgress" max="1" value="0" hidden></progress>
+            <p id="processingStatus" role="status" aria-live="polite">Waiting for a video.</p>
+            <p id="processingError" class="error-message" role="alert"></p>
+            <div id="analysisDetails" hidden>
+                <p>Detections across all frames: <strong id="totalDetections">--</strong></p>
+                <p>Average vehicles per frame: <strong id="averageVehicles">--</strong></p>
+                <p>Peak vehicles in a frame: <strong id="peakVehicles">--</strong></p>
+                <p>Frames processed: <strong id="framesProcessed">--</strong></p>
+                <ul id="classCounts" aria-label="Vehicle detections by class"></ul>
             </div>
-          </form>
-          <div id="app-message" class="message" role="status" aria-live="polite">Select an MP4 or AVI clip to begin.</div>
+            <section id="annotatedSection" hidden>
+                <h3>YOLO annotated output</h3>
+                <p>Boxes and labels are generated from model detections in the processed video.</p>
+                <video id="annotatedVideo" controls playsinline></video>
+            </section>
         </section>
 
-        <section class="metrics-grid" aria-label="Analysis results">
-          <article class="metric panel">
-            <span class="metric-label">AVERAGE VEHICLES / FRAME</span>
-            <strong class="metric-value" id="vehicle-count">--</strong>
-            <span class="metric-foot" id="sample-count">Awaiting video analysis</span>
-          </article>
-          <article class="metric panel">
-            <span class="metric-label">TRAFFIC DENSITY</span>
-            <strong class="metric-value density-value" id="density-value">--</strong>
-            <span class="metric-foot">Estimated from sampled detections</span>
-          </article>
-          <article class="metric panel signal-panel">
-            <span class="metric-label">SIMULATED SIGNAL</span>
-            <div class="signal-readout"><div class="signal-lights" aria-label="Signal indicators"><i class="light red"></i><i class="light yellow"></i><i class="light green" id="green-light"></i></div><strong id="signal-time">--</strong></div>
-            <span class="metric-foot" id="signal-label">No timing calculated</span>
-          </article>
+        <section class="cards">
+            <article class="panel">
+                <h3>Vehicles Detected</h3>
+                <p class="number" id="vehicleCount">--</p>
+            </article>
+
+            <article class="panel">
+                <h3>Traffic Density</h3>
+                <p class="number" id="density">Not analysed</p>
+            </article>
+
+            <article class="panel">
+                <h3>Emergency Corridor</h3>
+                <p class="number" id="emergencyStatus">Normal traffic</p>
+                <label for="emergencyDirection">Demo direction</label>
+                <select id="emergencyDirection">
+                    <option value="north">North</option>
+                    <option value="south">South</option>
+                    <option value="east">East</option>
+                    <option value="west">West</option>
+                </select>
+                <button type="button" id="startEmergency">Start demo simulation</button>
+                <button type="button" id="endEmergency" disabled>Return to normal</button>
+                <p>This is a simulation only; no ambulance is detected by this control.</p>
+            </article>
         </section>
 
-        <section class="panel results-panel" aria-labelledby="detections-heading">
-          <div class="panel-heading"><div><p class="eyebrow">MODEL OUTPUT</p><h2 id="detections-heading">Vehicle classes</h2></div><span id="model-label" class="quiet-label">No inference run</span></div>
-          <div id="detection-list" class="detection-list"><p class="empty-state">Actual model results will appear here after processing.</p></div>
-          <p class="disclaimer">Ambulance detection is not implemented. Standard pretrained YOLO weights are not treated as an ambulance detector.</p>
+        <section class="panel">
+            <h2>Virtual Traffic Signals</h2>
+            <div class="signals">
+                <div><span class="light red"></span> North</div>
+                <div><span class="light red"></span> South</div>
+                <div><span class="light red"></span> East</div>
+                <div><span class="light red"></span> West</div>
+            </div>
+            <p>Signal simulation only — not connected to real traffic lights.</p>
         </section>
-      </div>
+    </main>
 
-      <aside class="side-column">
-        <section class="panel corridor-panel" aria-labelledby="corridor-heading">
-          <div class="panel-heading"><div><p class="eyebrow">02 / PRIORITY MODE</p><h2 id="corridor-heading">Emergency corridor</h2></div><span id="corridor-badge" class="state-badge">NORMAL</span></div>
-          <div class="corridor-graphic" aria-hidden="true"><span class="road road-horizontal"></span><span class="road road-vertical"></span><span class="route-line" id="route-line"></span><span class="intersection-dot"></span><span class="compass north">N</span><span class="compass east">E</span><span class="compass south">S</span><span class="compass west">W</span></div>
-          <p id="corridor-message" class="corridor-message">Normal traffic mode. Ambulance detection is unavailable.</p>
-          <label class="field-label" for="direction-select">Demo route direction</label>
-          <select id="direction-select"><option value="north">Northbound</option><option value="south">Southbound</option><option value="east">Eastbound</option><option value="west">Westbound</option></select>
-          <div class="corridor-actions"><button class="button button-emergency" id="simulate-button" type="button">Start demo simulation</button><button class="button button-secondary" id="end-button" type="button" disabled>Return to normal</button></div>
-          <p class="simulation-warning">SIMULATED ONLY · This control does not detect an ambulance or alter real infrastructure.</p>
-        </section>
-        <section class="panel system-panel" aria-labelledby="system-heading">
-          <p class="eyebrow">SYSTEM STATUS</p><h2 id="system-heading">Prototype readiness</h2>
-          <dl><div><dt>Vehicle inference</dt><dd id="inference-status">Ready on request</dd></div><div><dt>Ambulance inference</dt><dd class="status-unavailable">Unavailable</dd></div><div><dt>Live camera</dt><dd class="status-todo">TODO</dd></div></dl>
-        </section>
-      </aside>
-    </section>
-    <footer>AI Traffic Management with Emergency Green Corridor <span>Hackathon prototype · Not for operational use</span></footer>
-  </main>
 </body>
 </html>

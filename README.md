@@ -4,9 +4,10 @@ A beginner-friendly Flask prototype for vehicle detection, traffic-density estim
 
 ## Features
 
-- Upload MP4 or AVI clips (maximum 100 MB) and run sampled-frame vehicle inference.
-- Use a custom Ultralytics model at `models/best.pt` when available; otherwise use the standard pretrained `yolov8n.pt` vehicle classes.
-- Estimate LOW, MEDIUM, or HIGH density from actual sampled detections and show prototype signal timing.
+- Upload MP4 or AVI clips (maximum 100 MB) and run YOLO inference on every decoded video frame.
+- Use the lightweight pretrained Ultralytics `yolo11n.pt` model by default, or configure a custom model at `models/best.pt`.
+- Filter detections to car, motorcycle, bus, and truck; return actual counts and generate an annotated video with bounding boxes and confidence labels.
+- Estimate LOW, MEDIUM, or HIGH density from average detections per frame and show prototype signal timing.
 - Demonstrate an emergency priority state with a direction selector. This control is simulation only and does not detect an ambulance.
 - The dashboard accepts video uploads from mobile browsers. Webcam/live-camera processing is a TODO and is not presented as implemented.
 
@@ -42,21 +43,29 @@ python app.py
 
 Then open http://127.0.0.1:5000. On macOS/Linux, activate with `source .venv/bin/activate` and use `python3` if needed.
 
-The application does not download datasets or train a model. Ultralytics may retrieve its small pretrained `yolov8n.pt` weights the first time fallback inference is requested, if those weights are not cached. To prevent network/model access, configure and provide a local model and use an offline environment; inference will otherwise return a clear error.
+The application does not download datasets or train a model. Ultralytics may retrieve the pretrained `yolo11n.pt` weights the first time inference is requested, if they are not cached. If model loading or inference fails, processing returns a clear error and does not report detection results.
 
 ## Model Setup
 
-Train the custom model in Google Colab using the guide in [colab/README.md](colab/README.md). Download the resulting `best.pt` and place it at `models/best.pt`. See [models/README.md](models/README.md). Set `TRAFFIC_MODEL_PATH` to use a different local model path.
+Train the custom model in Google Colab using the guide in [colab/README.md](colab/README.md). Download the resulting `best.pt` and place it at `models/best.pt`. See [models/README.md](models/README.md). Set `TRAFFIC_MODEL_PATH` to use another local model path. To adjust density thresholds in PowerShell, set `TRAFFIC_DENSITY_LOW_MAX` and `TRAFFIC_DENSITY_MEDIUM_MAX` before starting Flask; defaults are 5 and 15 detections per frame.
 
 The custom model's class names must match the labels used in its dataset. Standard COCO-pretrained YOLO weights do not provide reliable ambulance detection. This starter reports ambulance inference as unavailable; it must not be interpreted as detecting an ambulance. The emergency control is a clearly labelled, manually started demo simulation only.
 
 ## Prototype Limits and TODOs
 
-- Vehicle counts summarize a limited set of evenly sampled frames; they are not a live traffic measurement.
+- Counts are detection instances across processed frames, not unique tracked vehicles; the same vehicle may count once per frame.
 - Webcam/live-camera capture and ambulance inference/verification are TODOs.
 - Signal durations and corridor state are demonstrations, not validated traffic-control logic.
 - Do not connect this prototype to real roads, signal controllers, or emergency dispatch systems.
 - Uploaded clips are stored under `videos/uploads/`; remove them when no longer needed.
+
+## Tests
+
+Run the focused pipeline tests from the project root:
+
+```powershell
+python -m unittest discover -s tests -v
+```
 
 ## GitHub Push
 

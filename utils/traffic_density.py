@@ -22,6 +22,20 @@ def assess_density(
     return "HIGH"
 
 
+def density_thresholds_from_env() -> tuple[float, float]:
+    """Read optional density cutoffs from environment variables."""
+    import os
+
+    try:
+        low_max = float(os.environ.get("TRAFFIC_DENSITY_LOW_MAX", "5"))
+        medium_max = float(os.environ.get("TRAFFIC_DENSITY_MEDIUM_MAX", "15"))
+    except ValueError as error:
+        raise ValueError("Traffic density thresholds must be numeric.") from error
+    if low_max < 0 or medium_max < low_max:
+        raise ValueError("Density thresholds must satisfy 0 <= low_max <= medium_max.")
+    return low_max, medium_max
+
+
 def signal_timing(density: Density) -> dict[str, int | str]:
     """Return illustrative green/red durations; these are not a real controller."""
     green_seconds = {"LOW": 20, "MEDIUM": 35, "HIGH": 50}[density]
