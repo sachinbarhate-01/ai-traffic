@@ -9,7 +9,13 @@ import numpy as np
 
 import app as flask_app
 from utils.traffic_density import assess_density
-from utils.vehicle_detection import detect_vehicles, process_video
+from utils.vehicle_detection import (
+    CUSTOM_MODEL_PATH,
+    configured_model_path,
+    detect_vehicles,
+    is_relevant_vehicle_class,
+    process_video,
+)
 from utils.live_camera import LiveCameraManager
 
 
@@ -61,6 +67,20 @@ class FakeCamera:
 
 
 class TrafficPipelineTests(unittest.TestCase):
+    def test_custom_checkpoint_is_default_and_accessory_classes_are_excluded(self):
+        model_path, is_custom = configured_model_path()
+        self.assertEqual(Path(model_path), CUSTOM_MODEL_PATH)
+        self.assertTrue(is_custom)
+        for class_name in (
+            "auto", "bike", "bus", "car", "truck", "tempo traveller",
+            "ambulance", "ambulance_108", "ambulance_SOL", "fire_truck", "police", "Army",
+        ):
+            with self.subTest(class_name=class_name):
+                self.assertTrue(is_relevant_vehicle_class(class_name))
+        for class_name in ("vehicle_text", "lamp", "symbol", "logo", "license_plate"):
+            with self.subTest(class_name=class_name):
+                self.assertFalse(is_relevant_vehicle_class(class_name))
+
     def test_density_threshold_boundaries(self):
         self.assertEqual(assess_density(5), "LOW")
         self.assertEqual(assess_density(6), "MEDIUM")

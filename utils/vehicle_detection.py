@@ -2,29 +2,40 @@
 
 from __future__ import annotations
 
-import os
 from functools import lru_cache
 from pathlib import Path
 from threading import Lock
 from typing import Any
 
 CUSTOM_MODEL_PATH = Path(__file__).resolve().parents[1] / "models" / "best.pt"
-DEFAULT_MODEL_NAME = "yolo11n.pt"
-VEHICLE_LABELS = {"motorcycle", "car", "bus", "truck"}
+RELEVANT_VEHICLE_CLASSES = {
+    "vehicle",
+    "auto",
+    "bike",
+    "motorcycle",
+    "bus",
+    "car",
+    "truck",
+    "tempo traveller",
+    "ambulance",
+    "ambulance 108",
+    "ambulance sol",
+    "fire truck",
+    "police",
+    "army",
+}
 INFERENCE_LOCK = Lock()
 
 
 def configured_model_path(model_path: str | Path | None = None) -> tuple[str, bool]:
-    """Choose an explicit model, configured model, custom model, or lightweight default."""
-    if model_path is not None:
-        return str(model_path), True
+    """Use the custom checkpoint unless a caller explicitly supplies another path."""
+    return str(Path(model_path) if model_path is not None else CUSTOM_MODEL_PATH), True
 
-    environment_path = os.environ.get("TRAFFIC_MODEL_PATH")
-    if environment_path:
-        return environment_path, True
-    if CUSTOM_MODEL_PATH.is_file():
-        return str(CUSTOM_MODEL_PATH), True
-    return DEFAULT_MODEL_NAME, False
+
+def is_relevant_vehicle_class(class_name: str) -> bool:
+    """Match only named vehicle classes, ignoring accessory/text classes."""
+    normalized = " ".join(class_name.casefold().replace("_", " ").replace("-", " ").split())
+    return normalized in RELEVANT_VEHICLE_CLASSES
 
 
 @lru_cache(maxsize=2)
@@ -39,7 +50,7 @@ def detect_vehicles(
     model_path: str | Path | None = None,
     confidence: float = 0.25,
 ) -> dict[str, Any]:
-    """Run YOLO inference and return detected vehicle labels, boxes, and counts."""
+    """Run the custom YOLO model and return relevant class names, boxes, and counts."""
     selected_path, is_custom = configured_model_path(model_path)
     if is_custom and not Path(selected_path).is_file():
         return {
@@ -62,8 +73,8 @@ def detect_vehicles(
             names = prediction.names
             for box in prediction.boxes:
                 class_id = int(box.cls[0].item())
-                label = str(names[class_id]).lower()
-                if label in VEHICLE_LABELS:
+                label = str(names[class_id]).strip()
+                if is_relevant_vehicle_class(label):
                     counts[label] = counts.get(label, 0) + 1
                     coordinates = [round(float(value), 1) for value in box.xyxy[0].tolist()]
                     detections.append({
@@ -77,7 +88,7 @@ def detect_vehicles(
             "counts": counts,
             "error": None,
             "model": selected_path,
-            "model_type": "custom" if is_custom else "pretrained",
+            "model_type": "custom",
         }
     except Exception as error:
         return {
