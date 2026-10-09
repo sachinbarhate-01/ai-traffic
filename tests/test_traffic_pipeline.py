@@ -10,6 +10,7 @@ import numpy as np
 import app as flask_app
 from utils.traffic_density import assess_density
 from utils.vehicle_detection import detect_vehicles, process_video
+from utils.live_camera import LiveCameraManager
 
 
 class Scalar:
@@ -41,6 +42,24 @@ class FakeModel:
         return [FakePrediction()]
 
 
+class FakeCamera:
+    def __init__(self, opened=True, frames=None):
+        self.opened = opened
+        self.frames = list(frames or [])
+        self.release_count = 0
+
+    def isOpened(self):
+        return self.opened
+
+    def read(self):
+        if self.frames:
+            return True, self.frames.pop(0)
+        return False, None
+
+    def release(self):
+        self.release_count += 1
+
+
 class TrafficPipelineTests(unittest.TestCase):
     def test_density_threshold_boundaries(self):
         self.assertEqual(assess_density(5), "LOW")
@@ -55,6 +74,14 @@ class TrafficPipelineTests(unittest.TestCase):
         self.assertEqual(result["counts"], {"car": 1})
         self.assertEqual(result["detections"][0]["box"], [10.0, 12.0, 48.0, 52.0])
         self.assertEqual(result["detections"][0]["confidence"], 0.91)
+
+    def test_missing_custom_model_returns_error_without_inference(self):
+        result = detect_vehicles(
+            np.zeros((16, 16, 3), dtype=np.uint8),
+            model_path="models/does-not-exist.pt",
+        )
+        self.assertFalse(result["success"])
+        self.assertIn("not found", result["error"])
 
     def test_video_processes_every_frame_and_writes_annotated_output(self):
         with tempfile.TemporaryDirectory() as temporary_directory:
@@ -93,7 +120,7 @@ class TrafficPipelineTests(unittest.TestCase):
 
             rejected = client.post(
                 "/api/upload",
-                data={"video": (io.BytesIO(b"video"), "traffic.mov")},
+                data={"video": (io.BytesIO(b"video"), "traffic.mkv")},
                 content_type="multipart/form-data",
             )
             self.assertEqual(rejected.status_code, 400)
@@ -106,6 +133,20 @@ class TrafficPipelineTests(unittest.TestCase):
             self.assertEqual(uploaded.status_code, 200)
             filename = uploaded.get_json()["filename"]
             self.assertTrue((upload_directory / filename).is_file())
+
+            mov_upload = client.post(
+                "/api/upload",
+                data={"video": (io.BytesIO(b"video"), "traffic.mov")},
+                content_type="multipart/form-data",
+            )
+            self.assertEqual(mov_upload.status_code, 200)
+
+            avi_upload = client.post(
+                "/api/upload",
+                data={"video": (io.BytesIO(b"video"), "traffic.avi")},
+                content_type="multipart/form-data",
+            )
+            self.assertEqual(avi_upload.status_code, 200)
 
             inference_result = {
                 "success": True,
@@ -129,6 +170,67 @@ class TrafficPipelineTests(unittest.TestCase):
             self.assertEqual(failed.status_code, 503)
             self.assertFalse(failed.get_json()["success"])
             self.assertNotIn("vehicle_detections", failed.get_json())
+
+    def test_unavailable_usb_camera_is_reported_and_released(self):
+        camera = FakeCamera(opened=False)
+        manager = LiveCameraManager(lambda _index: camera)
+        result = manager.start()
+        self.assertFalse(result["success"])
+        self.assertEqual(result["status"], "unavailable")
+        self.assertIn("USB webcam app/camera bridge", result["error"])
+        self.assertEqual(camera.release_count, 1)
+
+    def test_usb_start_route_reports_unavailable_camera(self):
+        camera = FakeCamera(opened=False)
+        manager = LiveCameraManager(lambda _index: camera)
+        flask_app.app.testing = True
+        with patch.object(flask_app, "live_camera", manager):
+            client = flask_app.app.test_client()
+            response = client.post("/api/live/start")
+            status_response = client.get("/api/live/status")
+        self.assertEqual(response.status_code, 503)
+        self.assertIn("USB webcam app/camera bridge", response.get_json()["error"])
+        self.assertEqual(status_response.get_json()["status"], "unavailable")
+        self.assertEqual(camera.release_count, 1)
+
+    def test_usb_camera_allows_one_capture_and_stop_releases_it(self):
+        camera = FakeCamera()
+        opened_indices = []
+
+        def capture_factory(index):
+            opened_indices.append(index)
+            return camera
+
+        manager = LiveCameraManager(capture_factory)
+        with patch.dict("os.environ", {"TRAFFIC_CAMERA_INDEX": "2"}):
+            started = manager.start()
+            duplicate = manager.start()
+        self.assertTrue(started["success"])
+        self.assertFalse(duplicate["success"])
+        self.assertEqual(opened_indices, [2])
+        stopped = manager.stop()
+        self.assertFalse(stopped["active"])
+        self.assertEqual(camera.release_count, 1)
+
+    def test_live_stream_uses_detector_and_releases_camera_at_end(self):
+        camera = FakeCamera(frames=[np.zeros((64, 64, 3), dtype=np.uint8)])
+        manager = LiveCameraManager(lambda _index: camera)
+        self.assertTrue(manager.start()["success"])
+        self.assertTrue(manager.claim_stream())
+        with patch(
+            "utils.live_camera.detect_vehicles",
+            return_value={"success": True, "detections": [], "counts": {}},
+        ):
+            stream = manager.stream_frames()
+            frame_part = next(stream)
+            self.assertIn(b"Content-Type: image/jpeg", frame_part)
+            with self.assertRaises(StopIteration):
+                next(stream)
+
+        state = manager.status()
+        self.assertEqual(state["status"], "error")
+        self.assertEqual(camera.release_count, 1)
+        self.assertFalse(manager._stream_lock.locked())
 
 
 if __name__ == "__main__":

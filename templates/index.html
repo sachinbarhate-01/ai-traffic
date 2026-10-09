@@ -16,13 +16,13 @@
 
     <main>
         <section class="panel">
-            <h2>Traffic Monitoring</h2>
-            <p>Vehicle detection and traffic analysis dashboard</p>
+            <h2>Option 1: Upload Video From Laptop</h2>
+            <p>Select a traffic clip from this laptop. Supported formats: MP4, AVI, MOV. Maximum size: {{ max_upload_mb }} MB.</p>
 
-            <label for="trafficVideo">Upload traffic video (MP4 or AVI, max 100 MB)</label>
-            <input type="file" id="trafficVideo" accept="video/mp4,video/x-msvideo,.mp4,.avi">
-            <button type="button" id="uploadButton">Upload video</button>
-            <button type="button" id="processButton" disabled>Process every frame</button>
+            <label for="trafficVideo">Traffic video file</label>
+            <input type="file" id="trafficVideo" accept="video/mp4,video/x-msvideo,video/quicktime,.mp4,.avi,.mov" data-max-bytes="{{ max_upload_mb * 1024 * 1024 }}">
+            <button type="button" id="uploadButton">Upload Video</button>
+            <button type="button" id="processButton" disabled>Process Video</button>
             <video id="videoPreview" controls playsinline></video>
             <p id="uploadStatus" role="status" aria-live="polite">No video selected.</p>
             <progress id="processingProgress" max="1" value="0" hidden></progress>
@@ -40,6 +40,22 @@
                 <p>Boxes and labels are generated from model detections in the processed video.</p>
                 <video id="annotatedVideo" controls playsinline></video>
             </section>
+        </section>
+
+        <section class="panel" id="usbLivePanel">
+            <h2>Option 2: USB Mobile Live Video</h2>
+            <p id="usbSetupNote">A USB cable alone does not expose an Android phone as a webcam. Install and connect a compatible USB webcam app or camera bridge, and allow its Windows camera driver to appear in OpenCV.</p>
+            <p>OpenCV camera device index: <code>TRAFFIC_CAMERA_INDEX</code> (default 0). Set this in PowerShell if the phone bridge uses another index.</p>
+            <button type="button" id="startUsbLive">Start USB Live Video</button>
+            <button type="button" id="stopUsbLive" disabled>Stop USB Live Video</button>
+            <p id="usbConnectionStatus" role="status" aria-live="polite">USB live video is stopped.</p>
+            <p id="usbLiveError" class="error-message" role="alert"></p>
+            <img id="usbLiveFrame" alt="Annotated USB camera live frames" hidden>
+            <div class="cards live-metrics" id="usbLiveMetrics" hidden>
+                <article><h3>Vehicles in current frame</h3><p class="number" id="usbVehicleCount">--</p><ul id="usbClassCounts"></ul></article>
+                <article><h3>Live traffic density</h3><p class="number" id="usbDensity">--</p></article>
+                <article><h3>Virtual signal status</h3><p class="number" id="usbSignalStatus">--</p><p id="usbSignalTiming">Software simulation only.</p></article>
+            </div>
         </section>
 
         <section class="cards">

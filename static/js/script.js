@@ -9,6 +9,7 @@ const progress = document.getElementById("processingProgress");
 const annotatedSection = document.getElementById("annotatedSection");
 let currentVideoUrl = null;
 let uploadedFilename = null;
+let liveStatusTimer = null;
 
 function clearAnalysis() {
     document.getElementById("analysisDetails").hidden = true;
@@ -18,6 +19,13 @@ function clearAnalysis() {
     document.getElementById("density").textContent = "Not analysed";
 }
 
+function clearPreview() {
+    if (currentVideoUrl) URL.revokeObjectURL(currentVideoUrl);
+    currentVideoUrl = null;
+    preview.removeAttribute("src");
+    preview.style.display = "none";
+}
+
 input.addEventListener("change", () => {
     const file = input.files[0];
     uploadedFilename = null;
@@ -25,18 +33,22 @@ input.addEventListener("change", () => {
     processingError.textContent = "";
     clearAnalysis();
     if (!file) {
+        clearPreview();
         uploadStatus.textContent = "No video selected.";
         return;
     }
 
     const extension = file.name.split(".").pop().toLowerCase();
-    if (!["mp4", "avi"].includes(extension)) {
-        uploadStatus.textContent = "Choose an MP4 or AVI video.";
+    const maxBytes = Number(input.dataset.maxBytes);
+    if (!["mp4", "avi", "mov"].includes(extension)) {
+        clearPreview();
+        uploadStatus.textContent = "Choose an MP4, AVI, or MOV video.";
         input.value = "";
         return;
     }
-    if (file.size > 100 * 1024 * 1024) {
-        uploadStatus.textContent = "The selected video exceeds the 100 MB limit.";
+    if (file.size > maxBytes) {
+        clearPreview();
+        uploadStatus.textContent = `The selected video exceeds the ${Math.round(maxBytes / (1024 * 1024))} MB limit.`;
         input.value = "";
         return;
     }
@@ -60,7 +72,7 @@ async function readJson(response) {
 uploadButton.addEventListener("click", async () => {
     const file = input.files[0];
     if (!file) {
-        uploadStatus.textContent = "Select an MP4 or AVI video first.";
+        uploadStatus.textContent = "Select an MP4, AVI, or MOV video first.";
         return;
     }
 
@@ -181,3 +193,118 @@ endEmergency.addEventListener("click", async () => {
 });
 
 refreshCorridor();
+
+const usbStartButton = document.getElementById("startUsbLive");
+const usbStopButton = document.getElementById("stopUsbLive");
+const usbStatus = document.getElementById("usbConnectionStatus");
+const usbError = document.getElementById("usbLiveError");
+const usbFrame = document.getElementById("usbLiveFrame");
+const usbMetrics = document.getElementById("usbLiveMetrics");
+
+function renderLiveStatus(state) {
+    usbStatus.textContent = state.message || "USB camera status unavailable.";
+    usbStartButton.disabled = Boolean(state.active);
+    usbStopButton.disabled = !state.active;
+
+    if (state.error) {
+        usbError.textContent = state.error;
+    } else if (state.active) {
+        usbError.textContent = "";
+    }
+
+    if (state.frame_vehicle_count !== null && state.frame_vehicle_count !== undefined) {
+        document.getElementById("usbVehicleCount").textContent = state.frame_vehicle_count;
+        document.getElementById("usbDensity").textContent = state.density || "--";
+        document.getElementById("usbSignalStatus").textContent = state.signal
+            ? `SIMULATED PLAN: Green ${state.signal.green_seconds}s / Red ${state.signal.red_seconds}s`
+            : "--";
+        document.getElementById("usbSignalTiming").textContent = state.signal
+            ? state.signal.label
+            : "Software simulation only.";
+
+        const list = document.getElementById("usbClassCounts");
+        list.replaceChildren();
+        for (const [vehicleClass, count] of Object.entries(state.counts || {})) {
+            const item = document.createElement("li");
+            item.textContent = `${vehicleClass}: ${count}`;
+            list.append(item);
+        }
+        if (list.childElementCount === 0) {
+            const item = document.createElement("li");
+            item.textContent = "No supported vehicles detected in this frame.";
+            list.append(item);
+        }
+        usbMetrics.hidden = false;
+    }
+
+    if (!state.active && state.status !== "connecting") {
+        usbFrame.hidden = true;
+        usbFrame.removeAttribute("src");
+        usbMetrics.hidden = true;
+        document.getElementById("usbVehicleCount").textContent = "--";
+        document.getElementById("usbDensity").textContent = "--";
+        document.getElementById("usbSignalStatus").textContent = "--";
+        document.getElementById("usbSignalTiming").textContent = "Software simulation only.";
+        document.getElementById("usbClassCounts").replaceChildren();
+        if (liveStatusTimer) {
+            clearInterval(liveStatusTimer);
+            liveStatusTimer = null;
+        }
+    }
+}
+
+async function refreshLiveStatus() {
+    try {
+        const response = await fetch("/api/live/status", { cache: "no-store" });
+        renderLiveStatus(await response.json());
+    } catch {
+        usbStatus.textContent = "Could not read USB camera connection status.";
+    }
+}
+
+usbStartButton.addEventListener("click", async () => {
+    usbStartButton.disabled = true;
+    usbError.textContent = "";
+    usbStatus.textContent = "Opening configured OpenCV camera...";
+    try {
+        const result = await readJson(await fetch("/api/live/start", { method: "POST" }));
+        usbFrame.src = `${result.stream_url}?t=${Date.now()}`;
+        usbFrame.hidden = false;
+        usbMetrics.hidden = false;
+        usbStopButton.disabled = false;
+        usbStatus.textContent = result.message;
+        if (liveStatusTimer) clearInterval(liveStatusTimer);
+        liveStatusTimer = setInterval(refreshLiveStatus, 750);
+    } catch (error) {
+        usbStartButton.disabled = false;
+        usbStatus.textContent = "USB live video could not start.";
+        usbError.textContent = error.message;
+    }
+});
+
+usbStopButton.addEventListener("click", async () => {
+    usbStopButton.disabled = true;
+    try {
+        const response = await fetch("/api/live/stop", { method: "POST" });
+        const state = await response.json();
+        renderLiveStatus(state);
+    } catch (error) {
+        usbError.textContent = `Could not stop USB live video: ${error.message}`;
+    } finally {
+        usbFrame.hidden = true;
+        usbFrame.removeAttribute("src");
+        usbStartButton.disabled = false;
+        if (liveStatusTimer) {
+            clearInterval(liveStatusTimer);
+            liveStatusTimer = null;
+        }
+    }
+});
+
+usbFrame.addEventListener("error", () => {
+    if (!usbStopButton.disabled) {
+        usbError.textContent = "Annotated live stream disconnected. Check camera and model status.";
+    }
+});
+
+refreshLiveStatus();

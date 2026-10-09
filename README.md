@@ -4,12 +4,13 @@ A beginner-friendly Flask prototype for vehicle detection, traffic-density estim
 
 ## Features
 
-- Upload MP4 or AVI clips (maximum 100 MB) and run YOLO inference on every decoded video frame.
+- Upload MP4, AVI, or MOV clips (maximum 100 MB by default) and run YOLO inference on every decoded video frame.
+- Connect an Android phone through a compatible USB webcam app/camera bridge, select its OpenCV camera index, and run live inference with annotated frames.
 - Use the lightweight pretrained Ultralytics `yolo11n.pt` model by default, or configure a custom model at `models/best.pt`.
 - Filter detections to car, motorcycle, bus, and truck; return actual counts and generate an annotated video with bounding boxes and confidence labels.
 - Estimate LOW, MEDIUM, or HIGH density from average detections per frame and show prototype signal timing.
 - Demonstrate an emergency priority state with a direction selector. This control is simulation only and does not detect an ambulance.
-- The dashboard accepts video uploads from mobile browsers. Webcam/live-camera processing is a TODO and is not presented as implemented.
+- The dashboard has exactly two video input modes: laptop file upload and Android USB webcam bridge.
 
 ## Project Structure
 
@@ -42,8 +43,22 @@ python app.py
 ```
 
 Then open http://127.0.0.1:5000. On macOS/Linux, activate with `source .venv/bin/activate` and use `python3` if needed.
+If port 5000 is already in use, set `$env:PORT = "5001"` before `python app.py` and open http://127.0.0.1:5001.
 
 The application does not download datasets or train a model. Ultralytics may retrieve the pretrained `yolo11n.pt` weights the first time inference is requested, if they are not cached. If model loading or inference fails, processing returns a clear error and does not report detection results.
+
+## USB Mobile Camera
+
+A USB cable alone does not expose an Android phone as a Windows webcam. Install and run a compatible Android USB webcam app and its required Windows camera bridge/driver, connect the phone, and verify that Windows/OpenCV can see the virtual camera. Then select the matching OpenCV index in PowerShell before launching Flask:
+
+```powershell
+$env:TRAFFIC_CAMERA_INDEX = "0"
+python app.py
+```
+
+Try another index such as `1` if the bridge appears as a different device. The app opens the camera with `cv2.VideoCapture(camera_index)`, permits only one active capture, and releases it when stopped or if the stream fails. Live camera frames use the same YOLO detection and density functions as uploaded video. The virtual signal timing is a software-only plan.
+
+The upload cap can be changed before startup, for example `$env:TRAFFIC_MAX_UPLOAD_MB = "200"`. Density cutoffs remain configurable with `TRAFFIC_DENSITY_LOW_MAX` and `TRAFFIC_DENSITY_MEDIUM_MAX`.
 
 ## Model Setup
 
@@ -54,7 +69,7 @@ The custom model's class names must match the labels used in its dataset. Standa
 ## Prototype Limits and TODOs
 
 - Counts are detection instances across processed frames, not unique tracked vehicles; the same vehicle may count once per frame.
-- Webcam/live-camera capture and ambulance inference/verification are TODOs.
+- Ambulance inference/verification is not implemented. Standard pretrained weights are not treated as ambulance detection.
 - Signal durations and corridor state are demonstrations, not validated traffic-control logic.
 - Do not connect this prototype to real roads, signal controllers, or emergency dispatch systems.
 - Uploaded clips are stored under `videos/uploads/`; remove them when no longer needed.
@@ -66,6 +81,8 @@ Run the focused pipeline tests from the project root:
 ```powershell
 python -m unittest discover -s tests -v
 ```
+
+To manually test the two dashboard inputs, run `python app.py` and open http://127.0.0.1:5000. For Option 1, select an MP4, AVI, or MOV clip, click **Upload Video**, then **Process Video**. For Option 2, connect a phone webcam bridge, set `$env:TRAFFIC_CAMERA_INDEX = "0"` (or the detected index), then click **Start USB Live Video** and **Stop USB Live Video**. The USB test requires a phone webcam bridge that Windows exposes as a camera device.
 
 ## GitHub Push
 

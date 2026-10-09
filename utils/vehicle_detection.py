@@ -5,11 +5,13 @@ from __future__ import annotations
 import os
 from functools import lru_cache
 from pathlib import Path
+from threading import Lock
 from typing import Any
 
 CUSTOM_MODEL_PATH = Path(__file__).resolve().parents[1] / "models" / "best.pt"
 DEFAULT_MODEL_NAME = "yolo11n.pt"
 VEHICLE_LABELS = {"motorcycle", "car", "bus", "truck"}
+INFERENCE_LOCK = Lock()
 
 
 def configured_model_path(model_path: str | Path | None = None) -> tuple[str, bool]:
@@ -49,8 +51,9 @@ def detect_vehicles(
         }
 
     try:
-        model = _load_model(selected_path)
-        predictions = model.predict(source=image, conf=confidence, verbose=False)
+        with INFERENCE_LOCK:
+            model = _load_model(selected_path)
+            predictions = model.predict(source=image, conf=confidence, verbose=False)
         counts: dict[str, int] = {}
         detections: list[dict[str, Any]] = []
         for prediction in predictions:

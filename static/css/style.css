@@ -90,6 +90,57 @@ select {
     overflow-wrap: anywhere;
 }
 
+code {
+    padding: 2px 5px;
+    color: #8cecff;
+    background: #101b2d;
+}
+
+#usbLivePanel > p {
+    max-width: 850px;
+    line-height: 1.6;
+    overflow-wrap: anywhere;
+}
+
+#usbLiveFrame {
+    display: block;
+    width: 100%;
+    max-height: 560px;
+    margin-top: 14px;
+    object-fit: contain;
+    background: #05080d;
+    border: 1px solid #293d5c;
+    border-radius: 8px;
+}
+
+.live-metrics {
+    margin-top: 16px;
+}
+
+.live-metrics article {
+    min-width: 0;
+    padding: 14px;
+    border: 1px solid #293d5c;
+    border-radius: 8px;
+    background: #101b2d;
+}
+
+.live-metrics h3 {
+    margin-top: 0;
+    font-size: 15px;
+}
+
+.live-metrics ul {
+    padding-left: 18px;
+    color: #b7c8db;
+    overflow-wrap: anywhere;
+}
+
+#usbSignalTiming {
+    color: #b7c8db;
+    font-size: 13px;
+}
+
 progress {
     width: min(100%, 480px);
     height: 12px;
@@ -170,5 +221,17 @@ video {
 @media (max-width: 650px) {
     .cards {
         grid-template-columns: 1fr;
+    }
+
+    main {
+        padding: 16px;
+    }
+
+    .panel {
+        padding: 17px;
+    }
+
+    button {
+        max-width: 100%;
     }
 }
