@@ -161,6 +161,7 @@ class TrafficPipelineTests(unittest.TestCase):
             self.assertEqual(processed.status_code, 200)
             self.assertEqual(processed.get_json()["density"], "LOW")
             self.assertEqual(processed.get_json()["frames_processed"], 2)
+            self.assertEqual(processed.get_json()["signal"]["green_seconds"], 20)
 
             with patch(
                 "app.process_video",

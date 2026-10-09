@@ -100,6 +100,7 @@ def process_uploaded_video():
         peak_vehicle_count=result["peak_vehicle_count"],
         frames_processed=result["frames_processed"],
         density=density,
+        signal=signal_timing(density),
         density_thresholds={"low_max": low_max, "medium_max": medium_max},
         annotated_video_url=f"/processed/{output_name}",
     )
